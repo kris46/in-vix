@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>India VIX Intelligence Terminal</title>
+
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script> -->
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════════════════
+   DESIGN SYSTEM — Industrial Terminal / Bloomberg-era
+   Palette: near-black ground + electric amber + data greens/reds
+   Fonts: Syne (display) + IBM Plex Mono (data) + IBM Plex Sans (body)
+═══════════════════════════════════════════════════════ */
+:root {
+  --bg0: #050508;
+  --bg1: #0a0a10;
+  --bg2: #0f0f18;
+  --bg3: #141420;
+  --bg4: #1c1c2a;
+  --border: #1f1f30;
+  --border2: #2a2a3e;
+  --amber: #f0a500;
+  --amber2: #ffc235;
+  --amber-dim: #f0a50033;
+  --green: #00c896;
+  --green-dim: #00c89620;
+  --red: #ff4560;
+  --red-dim: #ff456020;
+  --blue: #4db8ff;
+  --blue-dim: #4db8ff20;
+  --purple: #b388ff;
+  --txt: #e8e8f0;
+  --txt2: #9090a8;
+  --txt3: #50506a;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --display: 'Syne', sans-serif;
+  --radius: 4px;
+  --radius2: 8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg0);color:var(--txt);font-family:var(--sans);font-size:13px;min-height:100vh;overflow-x:hidden;}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg1)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--amber)}
+
+/* ── Grid texture ── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(var(--border) 1px,transparent 1px),
+    linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:40px 40px;
+  opacity:.18;
+}
+
+/* ── Amber glow top ── */
+body::after{
+  content:'';position:fixed;top:-200px;left:50%;transform:translateX(-50%);
+  width:900px;height:400px;
+  background:radial-gradient(ellipse,rgba(240,165,0,.07) 0%,transparent 70%);
+  pointer-events:none;z-index:0;
+}
+
+.app{position:relative;z-index:1;max-width:1680px;margin:0 auto;padding:0 20px 60px;}
+
+/* ══════════════════════ HEADER ══════════════════════ */
+.header{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  padding:28px 0 20px;
+  border-bottom:1px solid var(--border2);
+  margin-bottom:20px;
+  gap:16px;flex-wrap:wrap;
+}
+.header-left h1{
+  font-family:var(--display);font-size:26px;font-weight:800;
+  letter-spacing:-.5px;line-height:1;
+  background:linear-gradient(135deg,var(--amber2) 0%,var(--amber) 50%,#c87800 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.header-left .sub{
+  font-family:var(--mono);font-size:10px;color:var(--txt3);
+  margin-top:5px;letter-spacing:.08em;text-transform:uppercase;
+}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+
+/* Regime badge */
+.regime-badge{
+  font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;
+  padding:5px 12px;border-radius:2px;text-transform:uppercase;
+  border:1px solid currentColor;transition:all .3s;
+}
+.regime-badge.COMPLACENT{color:var(--green);border-color:var(--green);background:var(--green-dim)}
+.regime-badge.NORMAL{color:var(--blue);border-color:var(--blue);background:var(--blue-dim)}
+.regime-badge.ELEVATED{color:var(--amber);border-color:var(--amber);background:var(--amber-dim)}
+.regime-badge.HIGH_FEAR{color:#ff8c42;border-color:#ff8c42;background:rgba(255,140,66,.15)}
+.regime-badge.EXTREME_FEAR{color:var(--red);border-color:var(--red);background:var(--red-dim)}
+
+/* Live indicator */
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+  animation:blink 2s ease-in-out infinite;display:inline-block;margin-right:6px}
+@keyframes blink{0%,100%{opacity:1;box-shadow:0 0 6px var(--green)}50%{opacity:.4;box-shadow:none}}
+
+/* Meta info */
+.meta-pill{font-family:var(--mono);font-size:9px;color:var(--txt3);
+  background:var(--bg3);border:1px solid var(--border);padding:4px 10px;border-radius:2px;
+  letter-spacing:.06em;}
+
+/* ══════════════════════ CONTROLS ══════════════════════ */
+.controls{
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  padding:12px 16px;
+  background:var(--bg1);border:1px solid var(--border);
+  border-radius:var(--radius);margin-bottom:16px;
+}
+.ctrl-group{display:flex;gap:4px;align-items:center}
+.ctrl-label{font-family:var(--mono);font-size:9px;color:var(--txt3);
+  text-transform:uppercase;letter-spacing:.1em;margin-right:4px;white-space:nowrap;}
+.ctrl-sep{width:1px;height:24px;background:var(--border2);margin:0 4px;}
+
+/* Range chips */
+.range-chip{
+  font-family:var(--mono);font-size:10px;color:var(--txt2);
+  background:var(--bg2);border:1px solid var(--border);
+  padding:4px 10px;border-radius:2px;cursor:pointer;
+  transition:all .15s;white-space:nowrap;
+}
+.range-chip:hover{border-color:var(--amber);color:var(--amber)}
+.range-chip.active{background:var(--amber-dim);border-color:var(--amber);color:var(--amber)}
+
+/* Toggle chips */
+.toggle-chip{
+  font-family:var(--mono);font-size:10px;
+  padding:4px 10px;border-radius:2px;cursor:pointer;
+  border:1px solid var(--border);color:var(--txt3);background:var(--bg2);
+  transition:all .15s;white-space:nowrap;
+}
+.toggle-chip:hover{border-color:var(--border2);color:var(--txt2)}
+.toggle-chip.active{border-color:currentColor;}
+.toggle-chip.sma5.active{color:#fff;border-color:#fff;background:rgba(255,255,255,.08)}
+.toggle-chip.sma10.active{color:#4db8ff;border-color:#4db8ff;background:#4db8ff15}
+.toggle-chip.sma20.active{color:#b388ff;border-color:#b388ff;background:#b388ff15}
+.toggle-chip.sma50.active{color:#ff8c42;border-color:#ff8c42;background:#ff8c4215}
+.toggle-chip.ema9.active{color:#00e5c8;border-color:#00e5c8;background:#00e5c815}
+.toggle-chip.ema21.active{color:#f06292;border-color:#f06292;background:#f0629215}
+.toggle-chip.bb.active{color:var(--amber);border-color:var(--amber);background:var(--amber-dim)}
+.toggle-chip.nifty.active{color:var(--green);border-color:var(--green);background:var(--green-dim)}
+
+/* Chart type toggle */
+.chart-type-btn{
+  font-family:var(--mono);font-size:10px;color:var(--txt3);
+  background:var(--bg2);border:1px solid var(--border);padding:4px 8px;
+  border-radius:2px;cursor:pointer;transition:all .15s;
+}
+.chart-type-btn.active{color:var(--amber);border-color:var(--amber);background:var(--amber-dim)}
+
+/* Threshold input */
+.threshold-input{
+  font-family:var(--mono);font-size:10px;color:var(--amber);
+  background:var(--bg2);border:1px solid var(--border);
+  padding:4px 8px;border-radius:2px;width:68px;outline:none;
+  transition:border-color .15s;
+}
+.threshold-input:focus{border-color:var(--amber)}
+.threshold-input::placeholder{color:var(--txt3)}
+
+/* Export btn */
+.export-btn{
+  font-family:var(--mono);font-size:9px;color:var(--amber);letter-spacing:.1em;
+  text-transform:uppercase;padding:5px 12px;border-radius:2px;cursor:pointer;
+  background:var(--amber-dim);border:1px solid var(--amber);
+  transition:all .15s;margin-left:auto;
+}
+.export-btn:hover{background:var(--amber);color:var(--bg0)}
+
+/* ══════════════════════ KPI STRIP ══════════════════════ */
+.kpi-strip{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:8px;
+  margin-bottom:16px;
+}
+@media(min-width:640px){.kpi-strip{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:1024px){.kpi-strip{grid-template-columns:repeat(6,1fr)}}
+
+.kpi{
+  background:var(--bg1);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 14px;
+  position:relative;overflow:hidden;
+  transition:border-color .2s,transform .2s;
+}
+.kpi:hover{border-color:var(--border2);transform:translateY(-1px)}
+.kpi::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,var(--kpi-accent,.1) 0%,transparent 60%);
+  opacity:.06;pointer-events:none;
+}
+.kpi-label{font-family:var(--mono);font-size:9px;color:var(--txt3);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;}
+.kpi-value{font-family:var(--mono);font-size:20px;font-weight:600;line-height:1;}
+.kpi-sub{font-family:var(--mono);font-size:9px;color:var(--txt3);margin-top:5px;}
+.kpi-bar{
+  position:absolute;bottom:0;left:0;height:2px;
+  background:var(--kpi-color,var(--amber));
+  transition:width .8s cubic-bezier(.4,0,.2,1);
+}
+
+/* ══════════════════════ CHART GRID ══════════════════════ */
+.chart-grid{
+  display:grid;gap:12px;margin-bottom:12px;
+}
+.chart-grid.main-row{grid-template-columns:1fr}
+.chart-grid.three-col{grid-template-columns:1fr}
+.chart-grid.two-col{grid-template-columns:1fr}
+@media(min-width:900px){
+  .chart-grid.three-col{grid-template-columns:1fr 1fr 1fr}
+  .chart-grid.two-col{grid-template-columns:1fr 1fr}
+}
+
+.panel{
+  background:var(--bg1);border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;
+  transition:border-color .2s;
+}
+.panel:hover{border-color:var(--border2)}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-bottom:1px solid var(--border);
+  background:var(--bg2);
+}
+.panel-title{font-family:var(--display);font-size:12px;font-weight:700;letter-spacing:.03em;
+  display:flex;align-items:center;gap:8px;}
+.panel-title .dot{width:5px;height:5px;border-radius:50%;background:var(--amber)}
+.panel-sub{font-family:var(--mono);font-size:9px;color:var(--txt3)}
+.panel-body{padding:12px;position:relative;}
+.chart-wrap{position:relative;}
+.chart-wrap canvas{display:block}
+
+/* Legend row */
+.legend-row{
+  display:flex;flex-wrap:wrap;gap:10px;padding:6px 14px 8px;
+  border-top:1px solid var(--border);background:var(--bg0);
+}
+.legend-item{
+  display:flex;align-items:center;gap:5px;
+  font-family:var(--mono);font-size:9px;color:var(--txt3);
+  cursor:pointer;transition:color .15s;
+}
+.legend-item:hover{color:var(--txt)}
+.legend-swatch{width:20px;height:2px;border-radius:1px;flex-shrink:0}
+.legend-swatch.dashed{
+  background:repeating-linear-gradient(90deg,currentColor 0,currentColor 4px,transparent 4px,transparent 8px);
+  height:1px;
+}
+
+/* ══════════════════════ BOTTOM PANELS ══════════════════════ */
+/* Analysis + table row */
+.bottom-grid{
+  display:grid;gap:12px;margin-bottom:12px;
+}
+.bottom-grid.three-col{grid-template-columns:1fr}
+@media(min-width:900px){.bottom-grid.three-col{grid-template-columns:1.2fr 1fr 1fr}}
+
+/* Data Table */
+.data-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px;}
+.data-table th{
+  color:var(--txt3);font-weight:500;text-align:left;
+  padding:6px 10px;border-bottom:1px solid var(--border2);
+  position:sticky;top:0;background:var(--bg2);z-index:1;
+  font-size:9px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;
+  white-space:nowrap;
+}
+.data-table th:hover{color:var(--amber)}
+.data-table th .sort-arrow{margin-left:4px;opacity:.4}
+.data-table th.sorted .sort-arrow{opacity:1;color:var(--amber)}
+.data-table td{
+  padding:6px 10px;border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+.data-table tr:hover td{background:var(--bg2)}
+.data-table .up{color:var(--red)}
+.data-table .dn{color:var(--green)}
+.data-table .regime-cell{font-size:8px;letter-spacing:.08em;font-weight:600}
+.data-table .regime-cell.COMPLACENT{color:var(--green)}
+.data-table .regime-cell.NORMAL{color:var(--blue)}
+.data-table .regime-cell.ELEVATED{color:var(--amber)}
+.data-table .regime-cell.HIGH_FEAR{color:#ff8c42}
+.data-table .regime-cell.EXTREME_FEAR{color:var(--red)}
+
+.table-scroll{overflow:auto;max-height:320px}
+.table-toolbar{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;
+  border-bottom:1px solid var(--border);background:var(--bg2);
+}
+.search-input{
+  font-family:var(--mono);font-size:10px;color:var(--txt);
+  background:var(--bg3);border:1px solid var(--border);
+  padding:4px 10px;border-radius:2px;outline:none;width:160px;
+  transition:border-color .15s;
+}
+.search-input:focus{border-color:var(--amber)}
+.search-input::placeholder{color:var(--txt3)}
+.table-count{font-family:var(--mono);font-size:9px;color:var(--txt3);margin-left:auto}
+
+/* ══════════════════════ ANALYSIS PANEL ══════════════════════ */
+.analysis-grid{display:flex;flex-direction:column;gap:8px;padding:12px;}
+.analysis-row{
+  display:flex;gap:10px;align-items:flex-start;
+  padding:8px;background:var(--bg2);border-radius:var(--radius);
+  border:1px solid var(--border);
+}
+.analysis-icon{
+  width:28px;height:28px;border-radius:var(--radius);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;flex-shrink:0;
+}
+.analysis-text .al{font-family:var(--mono);font-size:9px;color:var(--txt3);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;}
+.analysis-text p{font-size:11px;color:var(--txt2);line-height:1.5}
+
+/* ══════════════════════ MONTHLY HEATMAP ══════════════════════ */
+.heatmap-grid{display:flex;flex-wrap:wrap;gap:6px;padding:12px;}
+.hm-cell{
+  flex:0 0 calc(100%/6 - 5px);min-width:80px;
+  padding:8px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--bg2);
+  transition:transform .15s,border-color .15s;cursor:default;
+}
+.hm-cell:hover{transform:scale(1.03);border-color:var(--border2)}
+.hm-month{font-family:var(--mono);font-size:9px;color:var(--txt3);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+.hm-val{font-family:var(--mono);font-size:16px;font-weight:600;line-height:1;}
+.hm-chg{font-family:var(--mono);font-size:9px;margin-top:4px;}
+.hm-regime{font-family:var(--mono);font-size:8px;margin-top:3px;
+  text-transform:uppercase;letter-spacing:.06em;opacity:.7;}
+
+/* ══════════════════════ THRESHOLD ALERT ══════════════════════ */
+.alert-bar{
+  display:none;align-items:center;gap:10px;
+  padding:8px 14px;margin-bottom:12px;
+  background:rgba(240,165,0,.08);border:1px solid var(--amber);
+  border-radius:var(--radius);font-family:var(--mono);font-size:10px;color:var(--amber);
+  animation:slideDown .3s ease;
+}
+.alert-bar.show{display:flex}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.alert-dismiss{margin-left:auto;cursor:pointer;opacity:.6;font-size:14px}
+.alert-dismiss:hover{opacity:1}
+
+/* ══════════════════════ LOADING ══════════════════════ */
+.loading-overlay{
+  position:fixed;inset:0;background:var(--bg0);z-index:100;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+}
+.loading-logo{
+  font-family:var(--display);font-size:32px;font-weight:800;letter-spacing:-1px;
+  background:linear-gradient(135deg,var(--amber2),var(--amber));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.loading-bar-wrap{width:240px;height:2px;background:var(--bg3);border-radius:1px;overflow:hidden}
+.loading-bar{height:100%;background:linear-gradient(90deg,var(--amber),var(--amber2));
+  width:0%;transition:width .4s ease;border-radius:1px}
+.loading-msg{font-family:var(--mono);font-size:10px;color:var(--txt3);letter-spacing:.08em}
+
+/* ══════════════════════ UTILS ══════════════════════ */
+.up{color:var(--red)} /* VIX up = fear up = red */
+.dn{color:var(--green)}
+.muted{color:var(--txt3)}
+.mono{font-family:var(--mono)}
+.bold{font-weight:600}
+
+/* ══════════════════════ ANIMATIONS ══════════════════════ */
+.fade-in{animation:fadeIn .5s ease forwards}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.panel{animation:fadeIn .5s ease forwards}
+.panel:nth-child(1){animation-delay:.05s}
+.panel:nth-child(2){animation-delay:.10s}
+.panel:nth-child(3){animation-delay:.15s}
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-logo">VIX TERMINAL</div>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="loadingBar"></div></div>
+  <div class="loading-msg" id="loadingMsg">INITIALISING DATA PIPELINE…</div>
+</div>
+
+<div class="app" id="app" style="opacity:0">
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="header-left">
+      <h1>India VIX Intelligence Terminal</h1>
+      <div class="sub">
+        <span class="live-dot"></span>
+        <span id="headerMeta">Loading…</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="meta-pill" id="sessionCount">— sessions</span>
+      <span class="meta-pill" id="lastUpdated">—</span>
+      <span class="regime-badge" id="regimeBadge">—</span>
+    </div>
+  </header>
+
+  <!-- ── ALERT BAR ── -->
+  <div class="alert-bar" id="alertBar">
+    <span>⚡</span>
+    <span id="alertMsg">VIX threshold alert</span>
+    <span class="alert-dismiss" id="alertDismiss">✕</span>
+  </div>
+
+  <!-- ── CONTROLS ── -->
+  <div class="controls">
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">Range</span>
+      <button class="range-chip" data-range="1M">1M</button>
+      <button class="range-chip" data-range="3M">3M</button>
+      <button class="range-chip active" data-range="6M">6M</button>
+      <button class="range-chip" data-range="ALL">ALL</button>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">Chart</span>
+      <button class="chart-type-btn active" data-type="line">LINE</button>
+      <button class="chart-type-btn" data-type="candle">OHLC</button>
+      <button class="chart-type-btn" data-type="area">AREA</button>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">MA</span>
+      <button class="toggle-chip sma5 active" data-overlay="sma5">SMA5</button>
+      <button class="toggle-chip sma10" data-overlay="sma10">SMA10</button>
+      <button class="toggle-chip sma20 active" data-overlay="sma20">SMA20</button>
+      <button class="toggle-chip sma50" data-overlay="sma50">SMA50</button>
+      <button class="toggle-chip ema9" data-overlay="ema9">EMA9</button>
+      <button class="toggle-chip ema21" data-overlay="ema21">EMA21</button>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">Bands</span>
+      <button class="toggle-chip bb" data-overlay="bb">BB</button>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">Nifty</span>
+      <button class="toggle-chip nifty active" data-overlay="nifty">OVERLAY</button>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <div class="ctrl-group">
+      <span class="ctrl-label">Alert</span>
+      <input class="threshold-input" id="thresholdInput" type="number" placeholder="e.g. 8500" step="50"/>
+    </div>
+
+    <!-- <button class="export-btn" id="exportBtn">⬇ EXPORT CSV</button> -->
+  </div>
+
+  <!-- ── KPI STRIP ── -->
+  <div class="kpi-strip" id="kpiStrip">
+    <div class="kpi" style="--kpi-color:var(--amber);--kpi-accent:var(--amber)">
+      <div class="kpi-label">VIX Index</div>
+      <div class="kpi-value" id="kpiVIX">—</div>
+      <div class="kpi-sub" id="kpiVIXsub">—</div>
+      <div class="kpi-bar" id="kpiVIXbar" style="width:0%"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--red);--kpi-accent:var(--red)">
+      <div class="kpi-label">Period High</div>
+      <div class="kpi-value" style="color:var(--red)" id="kpiHigh">—</div>
+      <div class="kpi-sub" id="kpiHighDate">—</div>
+      <div class="kpi-bar" style="width:100%"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--green);--kpi-accent:var(--green)">
+      <div class="kpi-label">Period Low</div>
+      <div class="kpi-value" style="color:var(--green)" id="kpiLow">—</div>
+      <div class="kpi-sub" id="kpiLowDate">—</div>
+      <div class="kpi-bar" style="width:100%"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--blue);--kpi-accent:var(--blue)">
+      <div class="kpi-label">Z-Score 20D</div>
+      <div class="kpi-value" style="color:var(--blue)" id="kpiZscore">—</div>
+      <div class="kpi-sub" id="kpiZscoreSub">—</div>
+      <div class="kpi-bar" style="width:50%"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--purple);--kpi-accent:var(--purple)">
+      <div class="kpi-label">RSI 14</div>
+      <div class="kpi-value" style="color:var(--purple)" id="kpiRSI">—</div>
+      <div class="kpi-sub" id="kpiRSIsub">—</div>
+      <div class="kpi-bar" id="kpiRSIbar" style="width:50%"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--green);--kpi-accent:var(--green)">
+      <div class="kpi-label">Nifty 50</div>
+      <div class="kpi-value" style="color:var(--green)" id="kpiNifty">—</div>
+      <div class="kpi-sub" id="kpiNiftySub">—</div>
+      <div class="kpi-bar" id="kpiNiftyBar" style="width:60%"></div>
+    </div>
+  </div>
+
+  <!-- ── MAIN CHART ── -->
+  <div class="chart-grid main-row" style="margin-bottom:12px">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot"></div>VIX Price Action & Technical Overlays</div>
+        <div class="panel-sub" id="mainChartRange">—</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:360px"><canvas id="mainChart"></canvas></div>
+      </div>
+      <div class="legend-row" id="mainLegend"></div>
+    </div>
+  </div>
+
+  <!-- ── SUB-CHARTS ROW 1 ── -->
+  <div class="chart-grid three-col">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--blue)"></div>Z-Score 20D</div>
+        <div class="panel-sub">Mean deviation</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:160px"><canvas id="zscoreChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--purple)"></div>RSI 14</div>
+        <div class="panel-sub">Momentum oscillator</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:160px"><canvas id="rsiChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--amber)"></div>Bollinger Band Width</div>
+        <div class="panel-sub">Compression / expansion</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:160px"><canvas id="bbwidthChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUB-CHARTS ROW 2 ── -->
+  <div class="chart-grid three-col" style="margin-top:12px">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--red)"></div>5D Rate of Change</div>
+        <div class="panel-sub">Momentum direction</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:160px"><canvas id="rocChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--green)"></div>Intraday Range %</div>
+        <div class="panel-sub">Daily volatility intensity</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:160px"><canvas id="rangeChart"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--blue)"></div>VIX–Nifty Correlation</div>
+        <div class="panel-sub">20-day rolling Pearson</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:160px"><canvas id="corrChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM ROW ── -->
+  <div class="bottom-grid three-col" style="margin-top:12px">
+
+    <!-- Analysis Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot"></div>Market Intelligence</div>
+        <div class="panel-sub" id="analysisRegimeLabel">—</div>
+      </div>
+      <div class="analysis-grid" id="analysisGrid"></div>
+    </div>
+
+    <!-- Monthly Heatmap -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--blue)"></div>Monthly Summary</div>
+        <div class="panel-sub">Avg close &amp; % change</div>
+      </div>
+      <div class="heatmap-grid" id="heatmapGrid"></div>
+    </div>
+
+    <!-- Distribution -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title"><div class="dot" style="background:var(--purple)"></div>VIX Distribution</div>
+        <div class="panel-sub">Frequency histogram</div>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap" style="height:190px"><canvas id="distChart"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── DATA TABLE ── -->
+  <div class="panel" style="margin-top:12px">
+    <div class="panel-head">
+      <div class="panel-title"><div class="dot" style="background:var(--txt3)"></div>Session Log</div>
+      <div class="panel-sub">All trading sessions — sortable</div>
+    </div>
+    <div class="table-toolbar">
+      <input class="search-input" id="tableSearch" placeholder="Search date, regime…"/>
+      <span class="ctrl-label" style="margin-left:8px">Regime filter:</span>
+      <button class="range-chip active" data-regime="ALL">ALL</button>
+      <button class="range-chip" data-regime="COMPLACENT">CALM</button>
+      <button class="range-chip" data-regime="NORMAL">NORMAL</button>
+      <button class="range-chip" data-regime="ELEVATED">ELEV</button>
+      <button class="range-chip" data-regime="HIGH_FEAR">HIGH</button>
+      <button class="range-chip" data-regime="EXTREME_FEAR">EXTREME</button>
+      <span class="table-count" id="tableCount">— rows</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="dataTable">
+        <thead>
+          <tr>
+            <th data-col="date">Date<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_open">Open<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_high">High<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_low">Low<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_close">VIX Close<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_pct_change">% Chg<span class="sort-arrow">↕</span></th>
+            <th data-col="nifty_close">Nifty<span class="sort-arrow">↕</span></th>
+            <th data-col="nifty_pct_change">Nifty%<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_sma_20">SMA20<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_rsi14">RSI14<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_zscore20">Z-Score<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_bb_pct_b">%B<span class="sort-arrow">↕</span></th>
+            <th data-col="regime">Regime<span class="sort-arrow">↕</span></th>
+            <th data-col="regime_streak">Streak<span class="sort-arrow">↕</span></th>
+            <th data-col="nifty_drawdown_pct">Nifty DD%<span class="sort-arrow">↕</span></th>
+            <th data-col="vix_nifty_corr20">VIX-N Corr<span class="sort-arrow">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   INDIA VIX INTELLIGENCE TERMINAL
+   Data: india_vix_enriched.csv (PapaParse)
+   Charts: Chart.js 4
+═══════════════════════════════════════════════════════ */
+
+// ── State ──────────────────────────────────────────────
+const state = {
+  raw: [],          // all rows, deduped, sorted
+  filtered: [],     // current range/regime filter view
+  range: '6M',
+  chartType: 'line',
+  overlays: { sma5:true, sma10:false, sma20:true, sma50:false, ema9:false, ema21:false, bb:false, nifty:true },
+  regime: 'ALL',
+  search: '',
+  sortCol: 'date',
+  sortDir: -1,       // -1 = desc (newest first)
+  threshold: null,
+  charts: {},
+};
+
+// ── Chart.js defaults ──────────────────────────────────
+Chart.defaults.color = '#50506a';
+Chart.defaults.borderColor = '#1f1f30';
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 9;
+Chart.defaults.plugins.tooltip.backgroundColor = '#141420';
+Chart.defaults.plugins.tooltip.titleColor = '#e8e8f0';
+Chart.defaults.plugins.tooltip.bodyColor = '#9090a8';
+Chart.defaults.plugins.tooltip.borderColor = '#2a2a3e';
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+Chart.defaults.plugins.tooltip.cornerRadius = 3;
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.titleFont = { family: "'Syne', sans-serif", weight: '700', size: 11 };
+Chart.defaults.plugins.tooltip.bodyFont  = { family: "'IBM Plex Mono', monospace", size: 10 };
+Chart.defaults.animation = { duration: 600, easing: 'easeOutQuart' };
+
+// ── Loading helpers ────────────────────────────────────
+function setLoading(pct, msg) {
+  document.getElementById('loadingBar').style.width = pct + '%';
+  document.getElementById('loadingMsg').textContent = msg;
+}
+
+// ── Data loading ───────────────────────────────────────
+async function loadData() {
+  setLoading(20, 'FETCHING MARKET DATA…');
+  // Try to load from same directory (GitHub Pages) or public/data/
+  const paths = [
+    'public/data/india_vix_enriched.csv',
+    'india_vix_enriched.csv',
+    'data/india_vix_enriched.csv',
+  ];
+
+  let csvText = null;
+  for (const p of paths) {
+    try {
+      const r = await fetch(p);
+      if (r.ok) { csvText = await r.text(); break; }
+    } catch(e) {}
+  }
+
+  if (!csvText) {
+    document.getElementById('loadingMsg').textContent = 'ERROR: Could not load india_vix_enriched.csv — place it in the same folder as index.html';
+    return;
+  }
+
+  setLoading(50, 'PARSING 48 COLUMNS…');
+  const parsed = Papa.parse(csvText, { header: true, dynamicTyping: true, skipEmptyLines: true });
+
+  // Deduplicate: keep last row per date (has all indicators filled)
+  const byDate = {};
+  for (const row of parsed.data) {
+    if (row.date) byDate[row.date] = row;
+  }
+  state.raw = Object.values(byDate).sort((a,b) => a.date < b.date ? -1 : 1);
+
+  setLoading(80, 'COMPUTING LAYOUT…');
+  await new Promise(r => setTimeout(r, 200));
+
+  setLoading(100, 'RENDERING…');
+  await new Promise(r => setTimeout(r, 100));
+
+  boot();
+}
+
+// ── Boot: wire up everything ───────────────────────────
+function boot() {
+  document.getElementById('loadingOverlay').style.display = 'none';
+  const app = document.getElementById('app');
+  app.style.opacity = '1';
+  app.style.transition = 'opacity .4s ease';
+
+  applyRange();        // sets state.filtered
+  updateKPIs();
+  renderMainChart();
+  renderSubCharts();
+  renderAnalysis();
+  renderHeatmap();
+  renderDistChart();
+  renderTable();
+  wireControls();
+}
+
+// ── Range filter ───────────────────────────────────────
+function applyRange() {
+  const all = state.raw;
+  const last = all[all.length - 1];
+  if (!last) { state.filtered = all; return; }
+
+  const lastDate = new Date(last.date);
+  let cutoff = null;
+
+  if (state.range === '1M') {
+    cutoff = new Date(lastDate); cutoff.setMonth(cutoff.getMonth() - 1);
+  } else if (state.range === '3M') {
+    cutoff = new Date(lastDate); cutoff.setMonth(cutoff.getMonth() - 3);
+  } else if (state.range === '6M') {
+    cutoff = new Date(lastDate); cutoff.setMonth(cutoff.getMonth() - 6);
+  }
+
+  state.filtered = cutoff
+    ? all.filter(r => new Date(r.date) >= cutoff)
+    : all;
+}
+
+// ── Number formatters ──────────────────────────────────
+const f2 = v => v != null && !isNaN(v) ? (+v).toFixed(2) : '—';
+const f0 = v => v != null && !isNaN(v) ? Math.round(+v).toLocaleString('en-IN') : '—';
+const fp = v => v != null && !isNaN(v) ? (v > 0 ? '+' : '') + (+v).toFixed(2) + '%' : '—';
+
+// ── Regime colour mapping ──────────────────────────────
+const REGIME_COLORS = {
+  COMPLACENT:   '#00c896',
+  NORMAL:       '#4db8ff',
+  ELEVATED:     '#f0a500',
+  HIGH_FEAR:    '#ff8c42',
+  EXTREME_FEAR: '#ff4560',
+};
+
+function getRegimeColor(r) { return REGIME_COLORS[r] || '#9090a8'; }
+
+// ── KPI update ─────────────────────────────────────────
+function updateKPIs() {
+  const d = state.filtered;
+  if (!d.length) return;
+  const last = d[d.length - 1];
+  const prev = d[d.length - 2];
+
+  // VIX close
+  document.getElementById('kpiVIX').textContent = f0(last.vix_close);
+  const vixDayChg = prev ? last.vix_close - prev.vix_close : 0;
+  const vixDayPct = prev ? (vixDayChg / prev.vix_close * 100).toFixed(2) : 0;
+  const vixEl = document.getElementById('kpiVIXsub');
+  vixEl.innerHTML = `<span class="${vixDayChg >= 0 ? 'up' : 'dn'}">${vixDayChg >= 0 ? '▲' : '▼'} ${Math.abs(vixDayPct)}% day</span>`;
+
+  // High / Low
+  const maxV = Math.max(...d.map(r => r.vix_close));
+  const minV = Math.min(...d.map(r => r.vix_close));
+  const maxRow = d.find(r => r.vix_close === maxV);
+  const minRow = d.find(r => r.vix_close === minV);
+  document.getElementById('kpiHigh').textContent = f0(maxV);
+  document.getElementById('kpiHighDate').textContent = maxRow?.date || '';
+  document.getElementById('kpiLow').textContent = f0(minV);
+  document.getElementById('kpiLowDate').textContent = minRow?.date || '';
+
+  // Z-Score
+  const z = last.vix_zscore20;
+  document.getElementById('kpiZscore').textContent = z != null ? (+z).toFixed(2) : '—';
+  document.getElementById('kpiZscoreSub').textContent = z > 2 ? 'OVERBOUGHT' : z < -2 ? 'OVERSOLD' : z > 1 ? 'ELEVATED' : 'NEUTRAL';
+
+  // RSI
+  const rsi = last.vix_rsi14;
+  document.getElementById('kpiRSI').textContent = rsi != null ? (+rsi).toFixed(1) : '—';
+  document.getElementById('kpiRSIsub').textContent = rsi > 70 ? 'OVERBOUGHT — FEAR PEAK' : rsi < 30 ? 'OVERSOLD — FEAR BASE' : 'NEUTRAL';
+  document.getElementById('kpiRSIbar').style.width = (rsi || 50) + '%';
+
+  // Nifty
+  document.getElementById('kpiNifty').textContent = f0(last.nifty_close);
+  const nDayChg = last.nifty_pct_change;
+  document.getElementById('kpiNiftySub').innerHTML = `<span class="${nDayChg >= 0 ? 'dn' : 'up'}">${nDayChg >= 0 ? '▲' : '▼'} ${Math.abs(nDayChg || 0).toFixed(2)}% day</span>`;
+
+  // Header
+  const sessions = d.length;
+  document.getElementById('sessionCount').textContent = sessions + ' sessions';
+  document.getElementById('lastUpdated').textContent = 'Last: ' + last.date;
+  document.getElementById('headerMeta').textContent = `${d[0]?.date} → ${last.date}  ·  ${sessions} sessions`;
+
+  const regime = last.regime || 'EXTREME_FEAR';
+  const badge = document.getElementById('regimeBadge');
+  badge.textContent = regime.replace(/_/g, ' ');
+  badge.className = 'regime-badge ' + regime;
+
+  document.getElementById('mainChartRange').textContent = `${d[0]?.date} → ${last.date}`;
+
+  // Threshold alert
+  if (state.threshold && last.vix_close >= state.threshold) {
+    document.getElementById('alertMsg').textContent =
+      `⚡ VIX Index at ${f0(last.vix_close)} — above your alert threshold of ${f0(state.threshold)}`;
+    document.getElementById('alertBar').classList.add('show');
+  }
+}
+
+// ── Main chart ─────────────────────────────────────────
+function renderMainChart() {
+  const d = state.filtered;
+  if (!d.length) return;
+  const labels = d.map(r => r.date);
+  const closes = d.map(r => r.vix_close);
+
+  if (state.charts.main) { state.charts.main.destroy(); }
+
+  const ctx = document.getElementById('mainChart').getContext('2d');
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, 0, 0, 360);
+  grad.addColorStop(0, 'rgba(240,165,0,.2)');
+  grad.addColorStop(.5, 'rgba(240,165,0,.05)');
+  grad.addColorStop(1, 'rgba(240,165,0,0)');
+
+  const datasets = [];
+
+  // BB bands
+  if (state.overlays.bb) {
+    datasets.push({
+      label:'BB Upper', data: d.map(r=>r.vix_bb_upper),
+      borderColor:'#ff456055', borderWidth:1, borderDash:[3,3],
+      pointRadius:0, fill:false, yAxisID:'y',
+    });
+    datasets.push({
+      label:'BB Lower', data: d.map(r=>r.vix_bb_lower),
+      borderColor:'#00c89655', borderWidth:1, borderDash:[3,3],
+      pointRadius:0, fill:false, yAxisID:'y',
+    });
+  }
+
+  // SMAs
+  const maConfigs = [
+    { key:'sma5',  col:'vix_sma_5',  color:'#ffffff', lbl:'SMA 5' },
+    { key:'sma10', col:'vix_sma_10', color:'#4db8ff', lbl:'SMA 10' },
+    { key:'sma20', col:'vix_sma_20', color:'#b388ff', lbl:'SMA 20' },
+    { key:'sma50', col:'vix_sma_50', color:'#ff8c42', lbl:'SMA 50' },
+    { key:'ema9',  col:'vix_ema_9',  color:'#00e5c8', lbl:'EMA 9' },
+    { key:'ema21', col:'vix_ema_21', color:'#f06292', lbl:'EMA 21' },
+  ];
+  for (const m of maConfigs) {
+    if (!state.overlays[m.key]) continue;
+    datasets.push({
+      label: m.lbl, data: d.map(r => r[m.col]),
+      borderColor: m.color, borderWidth: 1.2,
+      pointRadius:0, fill:false, yAxisID:'y', tension:.2,
+    });
+  }
+
+  // Nifty overlay (secondary axis)
+  if (state.overlays.nifty) {
+    datasets.push({
+      label:'Nifty 50', data: d.map(r=>r.nifty_close),
+      borderColor:'rgba(0,200,150,.55)', borderWidth:1.2,
+      pointRadius:0, fill:false, yAxisID:'y2', tension:.3,
+    });
+  }
+
+  // Main VIX line
+  const mainDataset = {
+    label:'VIX Index', data: closes,
+    borderColor:'#f0a500', borderWidth:2.5,
+    pointRadius:0, pointHoverRadius:5,
+    pointHoverBackgroundColor:'#f0a500',
+    pointHoverBorderColor:'#fff', pointHoverBorderWidth:2,
+    fill: state.chartType === 'area' ? { target:'origin', above: grad } : false,
+    tension:.25, yAxisID:'y',
+  };
+
+  if (state.chartType === 'candle') {
+    // Simulate OHLC bars using scatter with custom draw
+    mainDataset.type = 'line';
+    mainDataset.fill = false;
+  }
+
+  datasets.push(mainDataset);
+
+  const annotations = {};
+  if (state.threshold) {
+    annotations.threshold = {
+      type:'line', yMin: state.threshold, yMax: state.threshold,
+      yScaleID:'y', borderColor:'#f0a50099', borderWidth:1,
+      borderDash:[6,4],
+      label:{ content: 'Alert: ' + f0(state.threshold), display:true,
+              position:'end', backgroundColor:'#f0a50022',
+              color:'#f0a500', font:{ size:9, family:"'IBM Plex Mono'" }, padding:4 }
+    };
+  }
+
+  state.charts.main = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ display:false },
+        annotation:{ annotations },
+        tooltip:{
+          callbacks:{
+            label: item => item.raw != null
+              ? ` ${item.dataset.label}: ${item.yAxisID==='y2'
+                  ? f0(item.raw) : f0(item.raw)}`
+              : null,
+          },
+          filter: item => item.raw != null,
+        }
+      },
+      scales:{
+        x:{ grid:{ display:false }, ticks:{ maxTicksLimit:12, maxRotation:0 },
+            border:{ display:false } },
+        y:{ position:'left',
+            grid:{ color:'#1f1f3055' },
+            ticks:{ callback: v => f0(v) },
+            border:{ display:false } },
+        ...(state.overlays.nifty ? { y2:{
+          position:'right', grid:{ display:false },
+          ticks:{ callback: v => f0(v), color:'rgba(0,200,150,.5)' },
+          border:{ display:false }
+        } } : {})
+      },
+    }
+  });
+
+  buildMainLegend();
+}
+
+function buildMainLegend() {
+  const items = [
+    { color:'#f0a500', label:'VIX Index', dashed:false },
+    ...(state.overlays.sma5  ? [{ color:'#ffffff', label:'SMA 5' }] : []),
+    ...(state.overlays.sma10 ? [{ color:'#4db8ff', label:'SMA 10' }] : []),
+    ...(state.overlays.sma20 ? [{ color:'#b388ff', label:'SMA 20' }] : []),
+    ...(state.overlays.sma50 ? [{ color:'#ff8c42', label:'SMA 50' }] : []),
+    ...(state.overlays.ema9  ? [{ color:'#00e5c8', label:'EMA 9' }] : []),
+    ...(state.overlays.ema21 ? [{ color:'#f06292', label:'EMA 21' }] : []),
+    ...(state.overlays.bb    ? [{ color:'#ff456088', label:'BB Upper', dashed:true },
+                                 { color:'#00c89688', label:'BB Lower', dashed:true }] : []),
+    ...(state.overlays.nifty ? [{ color:'rgba(0,200,150,.55)', label:'Nifty 50' }] : []),
+  ];
+  document.getElementById('mainLegend').innerHTML = items.map(it => `
+    <div class="legend-item">
+      <div class="legend-swatch${it.dashed?' dashed':''}" style="background:${it.color};color:${it.color}"></div>
+      <span>${it.label}</span>
+    </div>`).join('');
+}
+
+// ── Sub-charts ─────────────────────────────────────────
+function renderSubCharts() {
+  const d = state.filtered;
+  if (!d.length) return;
+  const labels = d.map(r => r.date);
+
+  // Destroy existing
+  ['zscore','rsi','bbwidth','roc','range','corr'].forEach(k => {
+    if (state.charts[k]) { state.charts[k].destroy(); }
+  });
+
+  const barDefaults = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ display:false },
+      y:{ grid:{ color:'#1f1f3044' }, border:{ display:false },
+          ticks:{ font:{ size:9 } } }
+    },
+    animation:{ duration:500 }
+  };
+
+  // Z-Score
+  const zs = d.map(r => r.vix_zscore20);
+  state.charts.zscore = new Chart(document.getElementById('zscoreChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:zs, backgroundColor: zs.map(z => {
+      if (z == null) return 'transparent';
+      if (z > 2)  return 'rgba(255,69,96,.8)';
+      if (z > 1)  return 'rgba(255,140,66,.6)';
+      if (z < -2) return 'rgba(0,200,150,.8)';
+      if (z < -1) return 'rgba(0,200,150,.5)';
+      return 'rgba(77,184,255,.4)';
+    }), borderRadius:1, borderSkipped:false }]},
+    options:{ ...barDefaults,
+      scales:{ ...barDefaults.scales, y:{ ...barDefaults.scales.y,
+        ticks:{ callback: v => v.toFixed(1), stepSize:1 } } },
+      plugins:{ ...barDefaults.plugins, tooltip:{ callbacks:{
+        title: i => i[0].label,
+        label: i => i.raw != null ? ` Z-Score: ${(+i.raw).toFixed(3)}` : null
+      }, filter: i => i.raw != null } } }
+  });
+
+  // RSI
+  const rsi = d.map(r => r.vix_rsi14);
+  state.charts.rsi = new Chart(document.getElementById('rsiChart'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { data:rsi, borderColor:'#b388ff', borderWidth:1.5, pointRadius:0,
+        fill:{ target: { value:50 }, above:'rgba(179,136,255,.1)', below:'rgba(179,136,255,.05)' },
+        tension:.3 }
+    ]},
+    options:{ ...barDefaults, type:'line',
+      scales:{ x:{ display:false },
+        y:{ grid:{ color:'#1f1f3044' }, min:0, max:100, border:{ display:false },
+          ticks:{ callback: v => v, stepSize:25 } } },
+      plugins:{ legend:{ display:false },
+        annotation:{ annotations:{
+          ob:{ type:'line', yMin:70, yMax:70, borderColor:'#ff456044', borderWidth:1, borderDash:[3,3] },
+          os:{ type:'line', yMin:30, yMax:30, borderColor:'#00c89644', borderWidth:1, borderDash:[3,3] },
+        }},
+        tooltip:{ callbacks:{
+          title: i => i[0].label,
+          label: i => i.raw != null ? ` RSI: ${(+i.raw).toFixed(1)}` : null
+        } } } }
+  });
+
+  // BB Width
+  const bbw = d.map(r => r.vix_bb_width);
+  state.charts.bbwidth = new Chart(document.getElementById('bbwidthChart'), {
+    type:'line',
+    data:{ labels, datasets:[{
+      data:bbw, borderColor:'#f0a500', borderWidth:1.5, pointRadius:0,
+      fill:{ target:'origin', above:'rgba(240,165,0,.07)' }, tension:.3
+    }]},
+    options:{ ...barDefaults,
+      scales:{ x:{ display:false },
+        y:{ grid:{ color:'#1f1f3044' }, border:{ display:false },
+          ticks:{ callback: v => (v*100).toFixed(1)+'%' } } },
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{
+        title: i => i[0].label,
+        label: i => i.raw != null ? ` BB Width: ${(+i.raw*100).toFixed(2)}%` : null
+      } } } }
+  });
+
+  // ROC 5
+  const roc = d.map(r => r.vix_roc_5);
+  state.charts.roc = new Chart(document.getElementById('rocChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:roc,
+      backgroundColor: roc.map(v => v == null ? 'transparent'
+        : v > 0 ? 'rgba(255,69,96,.65)' : 'rgba(0,200,150,.65)'),
+      borderRadius:1, borderSkipped:false }]},
+    options:{ ...barDefaults,
+      plugins:{ ...barDefaults.plugins, tooltip:{ callbacks:{
+        title: i => i[0].label,
+        label: i => i.raw != null ? ` 5D ROC: ${i.raw > 0?'+':''}${(+i.raw).toFixed(2)}%` : null
+      }, filter: i => i.raw != null } } }
+  });
+
+  // Intraday Range %
+  const irng = d.map(r => r.vix_intraday_range_pct);
+  const maxRng = Math.max(...irng.filter(v => v != null));
+  state.charts.range = new Chart(document.getElementById('rangeChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:irng,
+      backgroundColor: irng.map(v => {
+        if (v == null) return 'transparent';
+        const r = v/maxRng;
+        return r > .7 ? 'rgba(255,69,96,.7)' : r > .4 ? 'rgba(240,165,0,.55)' : 'rgba(0,200,150,.45)';
+      }),
+      borderRadius:1, borderSkipped:false }]},
+    options:{ ...barDefaults,
+      plugins:{ ...barDefaults.plugins, tooltip:{ callbacks:{
+        title: i => i[0].label,
+        label: i => i.raw != null ? ` Intraday Range: ${(+i.raw).toFixed(2)}%` : null
+      } } } }
+  });
+
+  // VIX-Nifty Correlation
+  const corr = d.map(r => r.vix_nifty_corr20);
+  state.charts.corr = new Chart(document.getElementById('corrChart'), {
+    type:'line',
+    data:{ labels, datasets:[{
+      data:corr, borderColor:'#4db8ff', borderWidth:1.5, pointRadius:0,
+      fill:{ target:{ value:0 }, above:'rgba(77,184,255,.08)', below:'rgba(255,69,96,.08)' },
+      tension:.3
+    }]},
+    options:{ ...barDefaults,
+      scales:{ x:{ display:false },
+        y:{ grid:{ color:'#1f1f3044' }, min:-1, max:1, border:{ display:false },
+          ticks:{ callback: v => v.toFixed(1), stepSize:.5 } } },
+      plugins:{ legend:{ display:false },
+        annotation:{ annotations:{
+          zero:{ type:'line', yMin:0, yMax:0, borderColor:'#2a2a3e', borderWidth:1 }
+        }},
+        tooltip:{ callbacks:{
+          title: i => i[0].label,
+          label: i => i.raw != null ? ` Corr: ${(+i.raw).toFixed(4)}` : null
+        } } } }
+  });
+}
+
+// ── Analysis panel ─────────────────────────────────────
+function renderAnalysis() {
+  const d = state.filtered;
+  if (!d.length) return;
+  const last = d[d.length - 1];
+  const regime = last.regime || 'EXTREME_FEAR';
+  const z = +(last.vix_zscore20 || 0);
+  const rsi = +(last.vix_rsi14 || 50);
+  const roc5 = +(last.vix_roc_5 || 0);
+  const bbpct = +(last.vix_bb_pct_b || .5);
+  const corr = +(last.vix_nifty_corr20 || 0);
+  const ndrawdown = +(last.nifty_drawdown_pct || 0);
+
+  document.getElementById('analysisRegimeLabel').textContent = regime.replace(/_/g, ' ');
+
+  // Build intelligence rows
+  const rows = [
+    {
+      icon:'🎯', color:'var(--amber)', bg:'var(--amber-dim)',
+      label:'Current Regime',
+      text: {
+        COMPLACENT:  'Low fear environment. Premium selling strategies favourable. Iron Condors and Credit Spreads with wide wings work well.',
+        NORMAL:      'Balanced market conditions. Directional strategies viable. Calendar spreads to exploit term structure.',
+        ELEVATED:    'Uncertainty rising. Reduce position sizes. Prefer defined-risk strategies (verticals, butterflies). Avoid naked selling.',
+        HIGH_FEAR:   'Active correction likely. Conservative stance required. Buying premium may be justified. Hedges essential.',
+        EXTREME_FEAR:'Panic / capitulation zone. Historically marks medium-term bottoms. Contrarian long positions with tight stops.'
+      }[regime] || 'Analysing…'
+    },
+    {
+      icon:'📊', color:'var(--blue)', bg:'var(--blue-dim)',
+      label:'Z-Score Signal',
+      text: z > 2 ? `Z-Score ${z.toFixed(2)} — Extreme overbought. VIX likely to mean-revert lower. High probability compression setup.`
+           : z > 1 ? `Z-Score ${z.toFixed(2)} — Elevated. Above-average fear. Watch for rollover.`
+           : z < -2 ? `Z-Score ${z.toFixed(2)} — Extreme oversold. VIX suppressed. Complacency risk — sharp spike possible from here.`
+           : z < -1 ? `Z-Score ${z.toFixed(2)} — Below average. Fear well contained. Markets likely calm.`
+           : `Z-Score ${z.toFixed(2)} — Neutral zone. No strong mean-reversion signal.`
+    },
+    {
+      icon:'⚡', color:'var(--purple)', bg:'rgba(179,136,255,.12)',
+      label:'RSI Momentum',
+      text: rsi > 70 ? `RSI ${rsi.toFixed(1)} — Overbought. Fear peak signal. Options: consider selling VIX via inverse strategies.`
+           : rsi < 30 ? `RSI ${rsi.toFixed(1)} — Oversold. Fear base. Markets typically rally from here within 5-15 sessions.`
+           : `RSI ${rsi.toFixed(1)} — Mid-range. 5D ROC at ${roc5 > 0 ? '+' : ''}${roc5.toFixed(1)}%. ${roc5 > 10 ? 'Rapid spike — look for exhaustion.' : roc5 < -10 ? 'Rapid deflation — watch for floor.' : 'Gradual move.'}`
+    },
+    {
+      icon:'🔗', color:'var(--green)', bg:'var(--green-dim)',
+      label:'VIX–Nifty Correlation',
+      text: `20-day rolling correlation: ${corr.toFixed(3)}. ${
+        corr < -0.5 ? 'Strong inverse relationship active — classic risk-off dynamic. VIX moves are translating to Nifty.'
+        : corr > 0.3 ? 'Unusual positive correlation — both rising or both falling together. Possible liquidity event or trending macro.'
+        : 'Correlation weakened — VIX and Nifty moving independently. Sector-specific or derivative-driven moves.'
+      } Nifty drawdown: ${ndrawdown.toFixed(2)}%.`
+    },
+    {
+      icon:'🎪', color:'var(--amber)', bg:'var(--amber-dim)',
+      label:'BB %B Position',
+      text: bbpct > .95 ? `%B at ${(bbpct*100).toFixed(0)}% — price above upper band. Extremely stretched. Mean reversion imminent.`
+           : bbpct < .05 ? `%B at ${(bbpct*100).toFixed(0)}% — price below lower band. Bands expanding. Fear still building.`
+           : bbpct > .8 ? `%B at ${(bbpct*100).toFixed(0)}% — approaching upper band. Resistance zone.`
+           : bbpct < .2 ? `%B at ${(bbpct*100).toFixed(0)}% — near lower band. Support zone.`
+           : `%B at ${(bbpct*100).toFixed(0)}% — mid-band. No extreme positioning.`
+    },
+  ];
+
+  document.getElementById('analysisGrid').innerHTML = rows.map(r => `
+    <div class="analysis-row">
+      <div class="analysis-icon" style="background:${r.bg};color:${r.color}">${r.icon}</div>
+      <div class="analysis-text">
+        <div class="al">${r.label}</div>
+        <p>${r.text}</p>
+      </div>
+    </div>`).join('');
+}
+
+// ── Monthly Heatmap ────────────────────────────────────
+function renderHeatmap() {
+  const d = state.raw; // always full data for heatmap
+  if (!d.length) return;
+
+  const months = {};
+  for (const r of d) {
+    const key = r.date.slice(0,7); // YYYY-MM
+    if (!months[key]) months[key] = [];
+    months[key].push(r.vix_close);
+  }
+
+  const html = Object.entries(months).map(([key, vals]) => {
+    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const open = vals[0], close = vals[vals.length-1];
+    const chg = ((close - open)/open*100).toFixed(1);
+    const pos = parseFloat(chg) > 0;
+    const [y, m] = key.split('-');
+    const mname = new Date(+y, +m-1).toLocaleString('en', {month:'short'}).toUpperCase();
+    const color = pos ? '#ff4560' : '#00c896';
+    return `<div class="hm-cell">
+      <div class="hm-month">${mname} ${y.slice(2)}</div>
+      <div class="hm-val" style="color:${color}">${f0(avg)}</div>
+      <div class="hm-chg" style="color:${color}">${pos?'▲':'▼'} ${Math.abs(chg)}%</div>
+      <div class="hm-regime" style="color:${color}">${vals.length}d</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('heatmapGrid').innerHTML = html;
+}
+
+// ── Distribution Chart ─────────────────────────────────
+function renderDistChart() {
+  const d = state.filtered;
+  if (!d.length) return;
+  if (state.charts.dist) state.charts.dist.destroy();
+
+  const closes = d.map(r=>r.vix_close).filter(v=>v!=null);
+  const minV = Math.floor(Math.min(...closes)/100)*100;
+  const maxV = Math.ceil(Math.max(...closes)/100)*100;
+  const binSize = 200;
+  const bins = [], labels = [], colors = [];
+
+  for (let b = minV; b < maxV; b += binSize) {
+    const count = closes.filter(c => c >= b && c < b+binSize).length;
+    bins.push(count);
+    labels.push(f0(b));
+    // Color by approximate regime mapping (these are index-level values, use relative)
+    const pct = (b - minV)/(maxV - minV);
+    colors.push(pct < .3 ? 'rgba(0,200,150,.65)'
+      : pct < .5 ? 'rgba(77,184,255,.55)'
+      : pct < .7 ? 'rgba(240,165,0,.6)'
+      : pct < .85 ? 'rgba(255,140,66,.6)'
+      : 'rgba(255,69,96,.65)');
+  }
+
+  state.charts.dist = new Chart(document.getElementById('distChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{
+      data:bins, backgroundColor:colors, borderRadius:3, borderSkipped:false
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false },
+        tooltip:{ callbacks:{
+          title: i => `VIX ${i[0].label}–${f0(+i[0].label.replace(/,/g,'')+binSize)}`,
+          label: i => ` Sessions: ${i.raw}`
+        } } },
+      scales:{
+        x:{ grid:{ display:false }, border:{ display:false },
+            ticks:{ maxTicksLimit:8, font:{ size:8 } } },
+        y:{ grid:{ color:'#1f1f3044' }, border:{ display:false } }
+      }
+    }
+  });
+}
+
+// ── Data Table ─────────────────────────────────────────
+function renderTable() {
+  const base = state.filtered;
+  let rows = base;
+
+  // Search filter
+  if (state.search) {
+    const q = state.search.toLowerCase();
+    rows = rows.filter(r =>
+      r.date?.toString().includes(q) ||
+      r.regime?.toLowerCase().includes(q)
+    );
+  }
+
+  // Regime filter
+  if (state.regime !== 'ALL') {
+    rows = rows.filter(r => r.regime === state.regime);
+  }
+
+  // Sort
+  rows = [...rows].sort((a, b) => {
+    let av = a[state.sortCol], bv = b[state.sortCol];
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    if (av < bv) return state.sortDir;
+    if (av > bv) return -state.sortDir;
+    return 0;
+  });
+
+  document.getElementById('tableCount').textContent = rows.length + ' rows';
+
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = rows.map(r => {
+    const vp = r.vix_pct_change;
+    const np = r.nifty_pct_change;
+    return `<tr>
+      <td class="bold">${r.date}</td>
+      <td>${f0(r.vix_open)}</td>
+      <td>${f0(r.vix_high)}</td>
+      <td>${f0(r.vix_low)}</td>
+      <td class="bold">${f0(r.vix_close)}</td>
+      <td class="${vp>=0?'up':'dn'}">${fp(vp)}</td>
+      <td>${f0(r.nifty_close)}</td>
+      <td class="${np>=0?'dn':'up'}">${fp(np)}</td>
+      <td>${f2(r.vix_sma_20)!='—'?f0(r.vix_sma_20):'—'}</td>
+      <td style="color:${r.vix_rsi14>70?'#ff4560':r.vix_rsi14<30?'#00c896':'#9090a8'}">${r.vix_rsi14!=null?(+r.vix_rsi14).toFixed(1):'—'}</td>
+      <td style="color:${r.vix_zscore20>2?'#ff4560':r.vix_zscore20<-2?'#00c896':'#9090a8'}">${r.vix_zscore20!=null?(+r.vix_zscore20).toFixed(3):'—'}</td>
+      <td>${r.vix_bb_pct_b!=null?(+r.vix_bb_pct_b).toFixed(3):'—'}</td>
+      <td class="regime-cell ${r.regime}">${(r.regime||'').replace(/_/g,' ')}</td>
+      <td>${r.regime_streak||'—'}</td>
+      <td class="${r.nifty_drawdown_pct<-10?'up':'dn'}">${r.nifty_drawdown_pct!=null?(+r.nifty_drawdown_pct).toFixed(2)+'%':'—'}</td>
+      <td style="color:${r.vix_nifty_corr20<-0.5?'#00c896':r.vix_nifty_corr20>0.5?'#ff4560':'#9090a8'}">${r.vix_nifty_corr20!=null?(+r.vix_nifty_corr20).toFixed(4):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Update sort arrows
+  document.querySelectorAll('.data-table th').forEach(th => {
+    th.classList.remove('sorted');
+    if (th.dataset.col === state.sortCol) th.classList.add('sorted');
+  });
+}
+
+// ── Wire all controls ──────────────────────────────────
+function wireControls() {
+
+  // Range chips
+  document.querySelectorAll('.range-chip[data-range]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.range-chip[data-range]').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      state.range = btn.dataset.range;
+      applyRange();
+      updateKPIs();
+      renderMainChart();
+      renderSubCharts();
+      renderDistChart();
+      renderAnalysis();
+      renderTable();
+    });
+  });
+
+  // Chart type
+  document.querySelectorAll('.chart-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chart-type-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      state.chartType = btn.dataset.type;
+      renderMainChart();
+    });
+  });
+
+  // Overlay toggles
+  document.querySelectorAll('.toggle-chip[data-overlay]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.overlay;
+      state.overlays[key] = !state.overlays[key];
+      btn.classList.toggle('active', state.overlays[key]);
+      renderMainChart();
+    });
+  });
+
+  // Regime filter chips in table
+  document.querySelectorAll('[data-regime]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-regime]').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      state.regime = btn.dataset.regime;
+      renderTable();
+    });
+  });
+
+  // Search
+  document.getElementById('tableSearch').addEventListener('input', e => {
+    state.search = e.target.value;
+    renderTable();
+  });
+
+  // Sort columns
+  document.querySelectorAll('.data-table th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      if (state.sortCol === th.dataset.col) {
+        state.sortDir *= -1;
+      } else {
+        state.sortCol = th.dataset.col;
+        state.sortDir = -1;
+      }
+      renderTable();
+    });
+  });
+
+  // Threshold
+  document.getElementById('thresholdInput').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    state.threshold = isNaN(v) ? null : v;
+    renderMainChart();
+    updateKPIs();
+  });
+
+  // Alert dismiss
+  document.getElementById('alertDismiss').addEventListener('click', () => {
+    document.getElementById('alertBar').classList.remove('show');
+  });
+
+  // Export CSV
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const d = state.filtered;
+    if (!d.length) return;
+    const cols = Object.keys(d[0]);
+    const csv = [cols.join(','), ...d.map(r=>cols.map(c=>{
+      const v = r[c];
+      return typeof v === 'string' && v.includes(',') ? `"${v}"` : (v ?? '');
+    }).join(','))].join('\n');
+    const blob = new Blob([csv], { type:'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `india_vix_${state.range}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  });
+
+  // Responsive: re-render charts on resize (debounced)
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      Object.values(state.charts).forEach(c => c?.resize?.());
+    }, 200);
+  });
+}
+
+// ── Kick off ───────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>
