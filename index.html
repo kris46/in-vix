@@ -5,13 +5,55 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>India VIX Intelligence Terminal</title>
 
-<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script> -->
+<!-- ── FIX: Sequential library loader ─────────────────────────────────────────
+     ORIGINAL BUG: 3 parallel <script src> tags let chartjs-plugin-annotation
+     execute before Chart.js had finished loading, causing:
+       • "Cannot read properties of undefined (reading 'helpers')"  ← annotation crash
+       • "Chart is not defined"                                      ← app crash
 
-<script src="https://cdn.jsdelivr.net/npm/papaparse/papaparse.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+     "Tracking Prevention blocked access to storage" messages in the console
+     are COSMETIC — they refer to cookie/cache storage, NOT script execution.
+     The scripts still load fine. To silence them entirely, serve locally:
+       python -m http.server 8080   then open  http://localhost:8080
+     and place index.html + india_vix_enriched.csv in the same folder.
 
+     This loader chains the 3 libs sequentially so annotation always gets a
+     fully-initialised Chart.js, then calls loadData() once everything is ready.
+──────────────────────────────────────────────────────────────────────────── -->
+<script>
+(function () {
+  'use strict';
+  function loadScript(src, cb) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.onerror = function () {
+      var el = document.getElementById('loadingMsg');
+      if (el) el.textContent = 'ERROR: Failed to load ' + src.split('/').pop()
+        + ' — check internet, or serve via: python -m http.server 8080';
+    };
+    s.onload = cb;
+    document.head.appendChild(s);
+  }
+  // Order is mandatory — do NOT reorder these three
+  loadScript(
+    'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js',
+    function () {
+      loadScript(
+        'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
+        function () {
+          loadScript(
+            'https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js',
+            function () {
+              // All 3 libraries confirmed ready — safe to boot the app
+              if (typeof loadData === 'function') loadData();
+            }
+          );
+        }
+      );
+    }
+  );
+})();
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
@@ -265,7 +307,6 @@ body::after{
 }
 
 /* ══════════════════════ BOTTOM PANELS ══════════════════════ */
-/* Analysis + table row */
 .bottom-grid{
   display:grid;gap:12px;margin-bottom:12px;
 }
@@ -374,7 +415,7 @@ body::after{
 .loading-msg{font-family:var(--mono);font-size:10px;color:var(--txt3);letter-spacing:.08em}
 
 /* ══════════════════════ UTILS ══════════════════════ */
-.up{color:var(--red)} /* VIX up = fear up = red */
+.up{color:var(--red)}
 .dn{color:var(--green)}
 .muted{color:var(--txt3)}
 .mono{font-family:var(--mono)}
@@ -476,7 +517,7 @@ body::after{
       <input class="threshold-input" id="thresholdInput" type="number" placeholder="e.g. 8500" step="50"/>
     </div>
 
-    <!-- <button class="export-btn" id="exportBtn">⬇ EXPORT CSV</button> -->
+    <button class="export-btn" id="exportBtn">⬇ EXPORT CSV</button>
   </div>
 
   <!-- ── KPI STRIP ── -->
@@ -684,15 +725,15 @@ body::after{
 
 // ── State ──────────────────────────────────────────────
 const state = {
-  raw: [],          // all rows, deduped, sorted
-  filtered: [],     // current range/regime filter view
+  raw: [],
+  filtered: [],
   range: '6M',
   chartType: 'line',
   overlays: { sma5:true, sma10:false, sma20:true, sma50:false, ema9:false, ema21:false, bb:false, nifty:true },
   regime: 'ALL',
   search: '',
   sortCol: 'date',
-  sortDir: -1,       // -1 = desc (newest first)
+  sortDir: -1,
   threshold: null,
   charts: {},
 };
@@ -722,7 +763,6 @@ function setLoading(pct, msg) {
 // ── Data loading ───────────────────────────────────────
 async function loadData() {
   setLoading(20, 'FETCHING MARKET DATA…');
-  // Try to load from same directory (GitHub Pages) or public/data/
   const paths = [
     'public/data/india_vix_enriched.csv',
     'india_vix_enriched.csv',
@@ -738,14 +778,15 @@ async function loadData() {
   }
 
   if (!csvText) {
-    document.getElementById('loadingMsg').textContent = 'ERROR: Could not load india_vix_enriched.csv — place it in the same folder as index.html';
+    document.getElementById('loadingMsg').textContent =
+      'ERROR: Could not load india_vix_enriched.csv — place it in the same folder as index.html, ' +
+      'then serve via: python -m http.server 8080';
     return;
   }
 
   setLoading(50, 'PARSING 48 COLUMNS…');
   const parsed = Papa.parse(csvText, { header: true, dynamicTyping: true, skipEmptyLines: true });
 
-  // Deduplicate: keep last row per date (has all indicators filled)
   const byDate = {};
   for (const row of parsed.data) {
     if (row.date) byDate[row.date] = row;
@@ -761,14 +802,14 @@ async function loadData() {
   boot();
 }
 
-// ── Boot: wire up everything ───────────────────────────
+// ── Boot ───────────────────────────────────────────────
 function boot() {
   document.getElementById('loadingOverlay').style.display = 'none';
   const app = document.getElementById('app');
   app.style.opacity = '1';
   app.style.transition = 'opacity .4s ease';
 
-  applyRange();        // sets state.filtered
+  applyRange();
   updateKPIs();
   renderMainChart();
   renderSubCharts();
@@ -801,12 +842,13 @@ function applyRange() {
     : all;
 }
 
-// ── Number formatters ──────────────────────────────────
+// ── Formatters ─────────────────────────────────────────
 const f2 = v => v != null && !isNaN(v) ? (+v).toFixed(2) : '—';
 const f0 = v => v != null && !isNaN(v) ? Math.round(+v).toLocaleString('en-IN') : '—';
+const fv = v => v != null && !isNaN(v) ? (+v).toFixed(2) : '—';   // VIX values — 2 decimal places
 const fp = v => v != null && !isNaN(v) ? (v > 0 ? '+' : '') + (+v).toFixed(2) + '%' : '—';
 
-// ── Regime colour mapping ──────────────────────────────
+// ── Regime colours ─────────────────────────────────────
 const REGIME_COLORS = {
   COMPLACENT:   '#00c896',
   NORMAL:       '#4db8ff',
@@ -814,54 +856,49 @@ const REGIME_COLORS = {
   HIGH_FEAR:    '#ff8c42',
   EXTREME_FEAR: '#ff4560',
 };
-
 function getRegimeColor(r) { return REGIME_COLORS[r] || '#9090a8'; }
 
-// ── KPI update ─────────────────────────────────────────
+// ── KPIs ───────────────────────────────────────────────
 function updateKPIs() {
   const d = state.filtered;
   if (!d.length) return;
   const last = d[d.length - 1];
   const prev = d[d.length - 2];
 
-  // VIX close
-  document.getElementById('kpiVIX').textContent = f0(last.vix_close);
+  document.getElementById('kpiVIX').textContent = fv(last.vix_close);
   const vixDayChg = prev ? last.vix_close - prev.vix_close : 0;
   const vixDayPct = prev ? (vixDayChg / prev.vix_close * 100).toFixed(2) : 0;
-  const vixEl = document.getElementById('kpiVIXsub');
-  vixEl.innerHTML = `<span class="${vixDayChg >= 0 ? 'up' : 'dn'}">${vixDayChg >= 0 ? '▲' : '▼'} ${Math.abs(vixDayPct)}% day</span>`;
+  document.getElementById('kpiVIXsub').innerHTML =
+    `<span class="${vixDayChg >= 0 ? 'up' : 'dn'}">${vixDayChg >= 0 ? '▲' : '▼'} ${Math.abs(vixDayPct)}% day</span>`;
 
-  // High / Low
   const maxV = Math.max(...d.map(r => r.vix_close));
   const minV = Math.min(...d.map(r => r.vix_close));
   const maxRow = d.find(r => r.vix_close === maxV);
   const minRow = d.find(r => r.vix_close === minV);
-  document.getElementById('kpiHigh').textContent = f0(maxV);
+  document.getElementById('kpiHigh').textContent = fv(maxV);
   document.getElementById('kpiHighDate').textContent = maxRow?.date || '';
-  document.getElementById('kpiLow').textContent = f0(minV);
+  document.getElementById('kpiLow').textContent = fv(minV);
   document.getElementById('kpiLowDate').textContent = minRow?.date || '';
 
-  // Z-Score
   const z = last.vix_zscore20;
   document.getElementById('kpiZscore').textContent = z != null ? (+z).toFixed(2) : '—';
-  document.getElementById('kpiZscoreSub').textContent = z > 2 ? 'OVERBOUGHT' : z < -2 ? 'OVERSOLD' : z > 1 ? 'ELEVATED' : 'NEUTRAL';
+  document.getElementById('kpiZscoreSub').textContent =
+    z > 2 ? 'OVERBOUGHT' : z < -2 ? 'OVERSOLD' : z > 1 ? 'ELEVATED' : 'NEUTRAL';
 
-  // RSI
   const rsi = last.vix_rsi14;
   document.getElementById('kpiRSI').textContent = rsi != null ? (+rsi).toFixed(1) : '—';
-  document.getElementById('kpiRSIsub').textContent = rsi > 70 ? 'OVERBOUGHT — FEAR PEAK' : rsi < 30 ? 'OVERSOLD — FEAR BASE' : 'NEUTRAL';
+  document.getElementById('kpiRSIsub').textContent =
+    rsi > 70 ? 'OVERBOUGHT — FEAR PEAK' : rsi < 30 ? 'OVERSOLD — FEAR BASE' : 'NEUTRAL';
   document.getElementById('kpiRSIbar').style.width = (rsi || 50) + '%';
 
-  // Nifty
   document.getElementById('kpiNifty').textContent = f0(last.nifty_close);
   const nDayChg = last.nifty_pct_change;
-  document.getElementById('kpiNiftySub').innerHTML = `<span class="${nDayChg >= 0 ? 'dn' : 'up'}">${nDayChg >= 0 ? '▲' : '▼'} ${Math.abs(nDayChg || 0).toFixed(2)}% day</span>`;
+  document.getElementById('kpiNiftySub').innerHTML =
+    `<span class="${nDayChg >= 0 ? 'dn' : 'up'}">${nDayChg >= 0 ? '▲' : '▼'} ${Math.abs(nDayChg || 0).toFixed(2)}% day</span>`;
 
-  // Header
-  const sessions = d.length;
-  document.getElementById('sessionCount').textContent = sessions + ' sessions';
+  document.getElementById('sessionCount').textContent = d.length + ' sessions';
   document.getElementById('lastUpdated').textContent = 'Last: ' + last.date;
-  document.getElementById('headerMeta').textContent = `${d[0]?.date} → ${last.date}  ·  ${sessions} sessions`;
+  document.getElementById('headerMeta').textContent = `${d[0]?.date} → ${last.date}  ·  ${d.length} sessions`;
 
   const regime = last.regime || 'EXTREME_FEAR';
   const badge = document.getElementById('regimeBadge');
@@ -870,7 +907,6 @@ function updateKPIs() {
 
   document.getElementById('mainChartRange').textContent = `${d[0]?.date} → ${last.date}`;
 
-  // Threshold alert
   if (state.threshold && last.vix_close >= state.threshold) {
     document.getElementById('alertMsg').textContent =
       `⚡ VIX Index at ${f0(last.vix_close)} — above your alert threshold of ${f0(state.threshold)}`;
@@ -888,8 +924,6 @@ function renderMainChart() {
   if (state.charts.main) { state.charts.main.destroy(); }
 
   const ctx = document.getElementById('mainChart').getContext('2d');
-
-  // Gradient fill
   const grad = ctx.createLinearGradient(0, 0, 0, 360);
   grad.addColorStop(0, 'rgba(240,165,0,.2)');
   grad.addColorStop(.5, 'rgba(240,165,0,.05)');
@@ -897,21 +931,15 @@ function renderMainChart() {
 
   const datasets = [];
 
-  // BB bands
   if (state.overlays.bb) {
-    datasets.push({
-      label:'BB Upper', data: d.map(r=>r.vix_bb_upper),
+    datasets.push({ label:'BB Upper', data: d.map(r=>r.vix_bb_upper),
       borderColor:'#ff456055', borderWidth:1, borderDash:[3,3],
-      pointRadius:0, fill:false, yAxisID:'y',
-    });
-    datasets.push({
-      label:'BB Lower', data: d.map(r=>r.vix_bb_lower),
+      pointRadius:0, fill:false, yAxisID:'y' });
+    datasets.push({ label:'BB Lower', data: d.map(r=>r.vix_bb_lower),
       borderColor:'#00c89655', borderWidth:1, borderDash:[3,3],
-      pointRadius:0, fill:false, yAxisID:'y',
-    });
+      pointRadius:0, fill:false, yAxisID:'y' });
   }
 
-  // SMAs
   const maConfigs = [
     { key:'sma5',  col:'vix_sma_5',  color:'#ffffff', lbl:'SMA 5' },
     { key:'sma10', col:'vix_sma_10', color:'#4db8ff', lbl:'SMA 10' },
@@ -922,24 +950,18 @@ function renderMainChart() {
   ];
   for (const m of maConfigs) {
     if (!state.overlays[m.key]) continue;
-    datasets.push({
-      label: m.lbl, data: d.map(r => r[m.col]),
+    datasets.push({ label: m.lbl, data: d.map(r => r[m.col]),
       borderColor: m.color, borderWidth: 1.2,
-      pointRadius:0, fill:false, yAxisID:'y', tension:.2,
-    });
+      pointRadius:0, fill:false, yAxisID:'y', tension:.2 });
   }
 
-  // Nifty overlay (secondary axis)
   if (state.overlays.nifty) {
-    datasets.push({
-      label:'Nifty 50', data: d.map(r=>r.nifty_close),
+    datasets.push({ label:'Nifty 50', data: d.map(r=>r.nifty_close),
       borderColor:'rgba(0,200,150,.55)', borderWidth:1.2,
-      pointRadius:0, fill:false, yAxisID:'y2', tension:.3,
-    });
+      pointRadius:0, fill:false, yAxisID:'y2', tension:.3 });
   }
 
-  // Main VIX line
-  const mainDataset = {
+  datasets.push({
     label:'VIX Index', data: closes,
     borderColor:'#f0a500', borderWidth:2.5,
     pointRadius:0, pointHoverRadius:5,
@@ -947,22 +969,13 @@ function renderMainChart() {
     pointHoverBorderColor:'#fff', pointHoverBorderWidth:2,
     fill: state.chartType === 'area' ? { target:'origin', above: grad } : false,
     tension:.25, yAxisID:'y',
-  };
-
-  if (state.chartType === 'candle') {
-    // Simulate OHLC bars using scatter with custom draw
-    mainDataset.type = 'line';
-    mainDataset.fill = false;
-  }
-
-  datasets.push(mainDataset);
+  });
 
   const annotations = {};
   if (state.threshold) {
     annotations.threshold = {
       type:'line', yMin: state.threshold, yMax: state.threshold,
-      yScaleID:'y', borderColor:'#f0a50099', borderWidth:1,
-      borderDash:[6,4],
+      yScaleID:'y', borderColor:'#f0a50099', borderWidth:1, borderDash:[6,4],
       label:{ content: 'Alert: ' + f0(state.threshold), display:true,
               position:'end', backgroundColor:'#f0a50022',
               color:'#f0a500', font:{ size:9, family:"'IBM Plex Mono'" }, padding:4 }
@@ -981,9 +994,7 @@ function renderMainChart() {
         tooltip:{
           callbacks:{
             label: item => item.raw != null
-              ? ` ${item.dataset.label}: ${item.yAxisID==='y2'
-                  ? f0(item.raw) : f0(item.raw)}`
-              : null,
+              ? ` ${item.dataset.label}: ${item.yAxisID==='y2' ? f0(item.raw) : fv(item.raw)}` : null,
           },
           filter: item => item.raw != null,
         }
@@ -991,10 +1002,8 @@ function renderMainChart() {
       scales:{
         x:{ grid:{ display:false }, ticks:{ maxTicksLimit:12, maxRotation:0 },
             border:{ display:false } },
-        y:{ position:'left',
-            grid:{ color:'#1f1f3055' },
-            ticks:{ callback: v => f0(v) },
-            border:{ display:false } },
+        y:{ position:'left', grid:{ color:'#1f1f3055' },
+            ticks:{ callback: v => fv(v) }, border:{ display:false } },
         ...(state.overlays.nifty ? { y2:{
           position:'right', grid:{ display:false },
           ticks:{ callback: v => f0(v), color:'rgba(0,200,150,.5)' },
@@ -1009,7 +1018,7 @@ function renderMainChart() {
 
 function buildMainLegend() {
   const items = [
-    { color:'#f0a500', label:'VIX Index', dashed:false },
+    { color:'#f0a500', label:'VIX Index' },
     ...(state.overlays.sma5  ? [{ color:'#ffffff', label:'SMA 5' }] : []),
     ...(state.overlays.sma10 ? [{ color:'#4db8ff', label:'SMA 10' }] : []),
     ...(state.overlays.sma20 ? [{ color:'#b388ff', label:'SMA 20' }] : []),
@@ -1033,7 +1042,6 @@ function renderSubCharts() {
   if (!d.length) return;
   const labels = d.map(r => r.date);
 
-  // Destroy existing
   ['zscore','rsi','bbwidth','roc','range','corr'].forEach(k => {
     if (state.charts[k]) { state.charts[k].destroy(); }
   });
@@ -1049,7 +1057,6 @@ function renderSubCharts() {
     animation:{ duration:500 }
   };
 
-  // Z-Score
   const zs = d.map(r => r.vix_zscore20);
   state.charts.zscore = new Chart(document.getElementById('zscoreChart'), {
     type:'bar',
@@ -1070,16 +1077,14 @@ function renderSubCharts() {
       }, filter: i => i.raw != null } } }
   });
 
-  // RSI
   const rsi = d.map(r => r.vix_rsi14);
   state.charts.rsi = new Chart(document.getElementById('rsiChart'), {
     type:'line',
-    data:{ labels, datasets:[
-      { data:rsi, borderColor:'#b388ff', borderWidth:1.5, pointRadius:0,
-        fill:{ target: { value:50 }, above:'rgba(179,136,255,.1)', below:'rgba(179,136,255,.05)' },
-        tension:.3 }
-    ]},
-    options:{ ...barDefaults, type:'line',
+    data:{ labels, datasets:[{
+      data:rsi, borderColor:'#b388ff', borderWidth:1.5, pointRadius:0,
+      fill:{ target: { value:50 }, above:'rgba(179,136,255,.1)', below:'rgba(179,136,255,.05)' },
+      tension:.3 }]},
+    options:{ ...barDefaults,
       scales:{ x:{ display:false },
         y:{ grid:{ color:'#1f1f3044' }, min:0, max:100, border:{ display:false },
           ticks:{ callback: v => v, stepSize:25 } } },
@@ -1094,14 +1099,12 @@ function renderSubCharts() {
         } } } }
   });
 
-  // BB Width
   const bbw = d.map(r => r.vix_bb_width);
   state.charts.bbwidth = new Chart(document.getElementById('bbwidthChart'), {
     type:'line',
     data:{ labels, datasets:[{
       data:bbw, borderColor:'#f0a500', borderWidth:1.5, pointRadius:0,
-      fill:{ target:'origin', above:'rgba(240,165,0,.07)' }, tension:.3
-    }]},
+      fill:{ target:'origin', above:'rgba(240,165,0,.07)' }, tension:.3 }]},
     options:{ ...barDefaults,
       scales:{ x:{ display:false },
         y:{ grid:{ color:'#1f1f3044' }, border:{ display:false },
@@ -1112,7 +1115,6 @@ function renderSubCharts() {
       } } } }
   });
 
-  // ROC 5
   const roc = d.map(r => r.vix_roc_5);
   state.charts.roc = new Chart(document.getElementById('rocChart'), {
     type:'bar',
@@ -1127,7 +1129,6 @@ function renderSubCharts() {
       }, filter: i => i.raw != null } } }
   });
 
-  // Intraday Range %
   const irng = d.map(r => r.vix_intraday_range_pct);
   const maxRng = Math.max(...irng.filter(v => v != null));
   state.charts.range = new Chart(document.getElementById('rangeChart'), {
@@ -1146,15 +1147,13 @@ function renderSubCharts() {
       } } } }
   });
 
-  // VIX-Nifty Correlation
   const corr = d.map(r => r.vix_nifty_corr20);
   state.charts.corr = new Chart(document.getElementById('corrChart'), {
     type:'line',
     data:{ labels, datasets:[{
       data:corr, borderColor:'#4db8ff', borderWidth:1.5, pointRadius:0,
       fill:{ target:{ value:0 }, above:'rgba(77,184,255,.08)', below:'rgba(255,69,96,.08)' },
-      tension:.3
-    }]},
+      tension:.3 }]},
     options:{ ...barDefaults,
       scales:{ x:{ display:false },
         y:{ grid:{ color:'#1f1f3044' }, min:-1, max:1, border:{ display:false },
@@ -1185,7 +1184,6 @@ function renderAnalysis() {
 
   document.getElementById('analysisRegimeLabel').textContent = regime.replace(/_/g, ' ');
 
-  // Build intelligence rows
   const rows = [
     {
       icon:'🎯', color:'var(--amber)', bg:'var(--amber-dim)',
@@ -1246,12 +1244,12 @@ function renderAnalysis() {
 
 // ── Monthly Heatmap ────────────────────────────────────
 function renderHeatmap() {
-  const d = state.raw; // always full data for heatmap
+  const d = state.raw;
   if (!d.length) return;
 
   const months = {};
   for (const r of d) {
-    const key = r.date.slice(0,7); // YYYY-MM
+    const key = r.date.slice(0,7);
     if (!months[key]) months[key] = [];
     months[key].push(r.vix_close);
   }
@@ -1266,7 +1264,7 @@ function renderHeatmap() {
     const color = pos ? '#ff4560' : '#00c896';
     return `<div class="hm-cell">
       <div class="hm-month">${mname} ${y.slice(2)}</div>
-      <div class="hm-val" style="color:${color}">${f0(avg)}</div>
+      <div class="hm-val" style="color:${color}">${fv(avg)}</div>
       <div class="hm-chg" style="color:${color}">${pos?'▲':'▼'} ${Math.abs(chg)}%</div>
       <div class="hm-regime" style="color:${color}">${vals.length}d</div>
     </div>`;
@@ -1291,7 +1289,6 @@ function renderDistChart() {
     const count = closes.filter(c => c >= b && c < b+binSize).length;
     bins.push(count);
     labels.push(f0(b));
-    // Color by approximate regime mapping (these are index-level values, use relative)
     const pct = (b - minV)/(maxV - minV);
     colors.push(pct < .3 ? 'rgba(0,200,150,.65)'
       : pct < .5 ? 'rgba(77,184,255,.55)'
@@ -1323,10 +1320,8 @@ function renderDistChart() {
 
 // ── Data Table ─────────────────────────────────────────
 function renderTable() {
-  const base = state.filtered;
-  let rows = base;
+  let rows = state.filtered;
 
-  // Search filter
   if (state.search) {
     const q = state.search.toLowerCase();
     rows = rows.filter(r =>
@@ -1335,12 +1330,10 @@ function renderTable() {
     );
   }
 
-  // Regime filter
   if (state.regime !== 'ALL') {
     rows = rows.filter(r => r.regime === state.regime);
   }
 
-  // Sort
   rows = [...rows].sort((a, b) => {
     let av = a[state.sortCol], bv = b[state.sortCol];
     if (typeof av === 'string') av = av.toLowerCase();
@@ -1352,20 +1345,19 @@ function renderTable() {
 
   document.getElementById('tableCount').textContent = rows.length + ' rows';
 
-  const tbody = document.getElementById('tableBody');
-  tbody.innerHTML = rows.map(r => {
+  document.getElementById('tableBody').innerHTML = rows.map(r => {
     const vp = r.vix_pct_change;
     const np = r.nifty_pct_change;
     return `<tr>
       <td class="bold">${r.date}</td>
-      <td>${f0(r.vix_open)}</td>
-      <td>${f0(r.vix_high)}</td>
-      <td>${f0(r.vix_low)}</td>
-      <td class="bold">${f0(r.vix_close)}</td>
+      <td>${fv(r.vix_open)}</td>
+      <td>${fv(r.vix_high)}</td>
+      <td>${fv(r.vix_low)}</td>
+      <td class="bold">${fv(r.vix_close)}</td>
       <td class="${vp>=0?'up':'dn'}">${fp(vp)}</td>
       <td>${f0(r.nifty_close)}</td>
       <td class="${np>=0?'dn':'up'}">${fp(np)}</td>
-      <td>${f2(r.vix_sma_20)!='—'?f0(r.vix_sma_20):'—'}</td>
+      <td>${fv(r.vix_sma_20)}</td>
       <td style="color:${r.vix_rsi14>70?'#ff4560':r.vix_rsi14<30?'#00c896':'#9090a8'}">${r.vix_rsi14!=null?(+r.vix_rsi14).toFixed(1):'—'}</td>
       <td style="color:${r.vix_zscore20>2?'#ff4560':r.vix_zscore20<-2?'#00c896':'#9090a8'}">${r.vix_zscore20!=null?(+r.vix_zscore20).toFixed(3):'—'}</td>
       <td>${r.vix_bb_pct_b!=null?(+r.vix_bb_pct_b).toFixed(3):'—'}</td>
@@ -1376,33 +1368,25 @@ function renderTable() {
     </tr>`;
   }).join('');
 
-  // Update sort arrows
   document.querySelectorAll('.data-table th').forEach(th => {
     th.classList.remove('sorted');
     if (th.dataset.col === state.sortCol) th.classList.add('sorted');
   });
 }
 
-// ── Wire all controls ──────────────────────────────────
+// ── Wire controls ──────────────────────────────────────
 function wireControls() {
 
-  // Range chips
   document.querySelectorAll('.range-chip[data-range]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.range-chip[data-range]').forEach(b=>b.classList.remove('active'));
       btn.classList.add('active');
       state.range = btn.dataset.range;
-      applyRange();
-      updateKPIs();
-      renderMainChart();
-      renderSubCharts();
-      renderDistChart();
-      renderAnalysis();
-      renderTable();
+      applyRange(); updateKPIs(); renderMainChart();
+      renderSubCharts(); renderDistChart(); renderAnalysis(); renderTable();
     });
   });
 
-  // Chart type
   document.querySelectorAll('.chart-type-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.chart-type-btn').forEach(b=>b.classList.remove('active'));
@@ -1412,7 +1396,6 @@ function wireControls() {
     });
   });
 
-  // Overlay toggles
   document.querySelectorAll('.toggle-chip[data-overlay]').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.overlay;
@@ -1422,7 +1405,6 @@ function wireControls() {
     });
   });
 
-  // Regime filter chips in table
   document.querySelectorAll('[data-regime]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-regime]').forEach(b=>b.classList.remove('active'));
@@ -1432,39 +1414,29 @@ function wireControls() {
     });
   });
 
-  // Search
   document.getElementById('tableSearch').addEventListener('input', e => {
     state.search = e.target.value;
     renderTable();
   });
 
-  // Sort columns
   document.querySelectorAll('.data-table th[data-col]').forEach(th => {
     th.addEventListener('click', () => {
-      if (state.sortCol === th.dataset.col) {
-        state.sortDir *= -1;
-      } else {
-        state.sortCol = th.dataset.col;
-        state.sortDir = -1;
-      }
+      if (state.sortCol === th.dataset.col) state.sortDir *= -1;
+      else { state.sortCol = th.dataset.col; state.sortDir = -1; }
       renderTable();
     });
   });
 
-  // Threshold
   document.getElementById('thresholdInput').addEventListener('input', e => {
     const v = parseFloat(e.target.value);
     state.threshold = isNaN(v) ? null : v;
-    renderMainChart();
-    updateKPIs();
+    renderMainChart(); updateKPIs();
   });
 
-  // Alert dismiss
   document.getElementById('alertDismiss').addEventListener('click', () => {
     document.getElementById('alertBar').classList.remove('show');
   });
 
-  // Export CSV
   document.getElementById('exportBtn').addEventListener('click', () => {
     const d = state.filtered;
     if (!d.length) return;
@@ -1480,7 +1452,6 @@ function wireControls() {
     a.click(); URL.revokeObjectURL(url);
   });
 
-  // Responsive: re-render charts on resize (debounced)
   let resizeTimer;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
@@ -1490,8 +1461,8 @@ function wireControls() {
   });
 }
 
-// ── Kick off ───────────────────────────────────────────
-loadData();
+// ── loadData() is invoked by the sequential library loader in <head> ──────────
+// Do NOT add a bare loadData() call here — it would fire before Chart.js loads.
 </script>
 </body>
 </html>
