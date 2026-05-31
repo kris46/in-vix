@@ -44,8 +44,21 @@
           loadScript(
             'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
             function () {
-              // All 3 libraries confirmed ready — apply Chart.js defaults then boot
-              applyChartDefaults();
+              // All 3 libraries confirmed ready — set Chart.js defaults inline then boot
+              Chart.defaults.color = '#50506a';
+              Chart.defaults.borderColor = '#1f1f30';
+              Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+              Chart.defaults.font.size = 9;
+              Chart.defaults.plugins.tooltip.backgroundColor = '#141420';
+              Chart.defaults.plugins.tooltip.titleColor = '#e8e8f0';
+              Chart.defaults.plugins.tooltip.bodyColor = '#9090a8';
+              Chart.defaults.plugins.tooltip.borderColor = '#2a2a3e';
+              Chart.defaults.plugins.tooltip.borderWidth = 1;
+              Chart.defaults.plugins.tooltip.cornerRadius = 3;
+              Chart.defaults.plugins.tooltip.padding = 10;
+              Chart.defaults.plugins.tooltip.titleFont = { family: "'Syne', sans-serif", weight: '700', size: 11 };
+              Chart.defaults.plugins.tooltip.bodyFont  = { family: "'IBM Plex Mono', monospace", size: 10 };
+              Chart.defaults.animation = { duration: 600, easing: 'easeOutQuart' };
               if (typeof loadData === 'function') loadData();
             }
           );
@@ -739,24 +752,7 @@ const state = {
   charts: {},
 };
 
-// ── Chart.js defaults — called AFTER Chart.js has loaded ─────────────────────
-// Must NOT run at parse time (Chart is undefined then). Called by the loader.
-function applyChartDefaults() {
-  Chart.defaults.color = '#50506a';
-  Chart.defaults.borderColor = '#1f1f30';
-  Chart.defaults.font.family = "'IBM Plex Mono', monospace";
-  Chart.defaults.font.size = 9;
-  Chart.defaults.plugins.tooltip.backgroundColor = '#141420';
-  Chart.defaults.plugins.tooltip.titleColor = '#e8e8f0';
-  Chart.defaults.plugins.tooltip.bodyColor = '#9090a8';
-  Chart.defaults.plugins.tooltip.borderColor = '#2a2a3e';
-  Chart.defaults.plugins.tooltip.borderWidth = 1;
-  Chart.defaults.plugins.tooltip.cornerRadius = 3;
-  Chart.defaults.plugins.tooltip.padding = 10;
-  Chart.defaults.plugins.tooltip.titleFont = { family: "'Syne', sans-serif", weight: '700', size: 11 };
-  Chart.defaults.plugins.tooltip.bodyFont  = { family: "'IBM Plex Mono', monospace", size: 10 };
-  Chart.defaults.animation = { duration: 600, easing: 'easeOutQuart' };
-}
+// Chart.defaults are set inside the sequential loader once Chart.js is confirmed loaded.
 
 // ── Loading helpers ────────────────────────────────────
 function setLoading(pct, msg) {
