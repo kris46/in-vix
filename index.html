@@ -20,7 +20,6 @@
      This loader chains the 3 libs sequentially so annotation always gets a
      fully-initialised Chart.js, then calls loadData() once everything is ready.
 ──────────────────────────────────────────────────────────────────────────── -->
-<!-- ═══════════════════════════════════════════════════════
 <script>
 (function () {
   'use strict';
@@ -37,15 +36,16 @@
   }
   // Order is mandatory — do NOT reorder these three
   loadScript(
-    'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js',
+    'https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js',
     function () {
       loadScript(
-        'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
         function () {
           loadScript(
-            'https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js',
+            'https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js',
             function () {
-              // All 3 libraries confirmed ready — safe to boot the app
+              // All 3 libraries confirmed ready — apply Chart.js defaults then boot
+              applyChartDefaults();
               if (typeof loadData === 'function') loadData();
             }
           );
@@ -55,13 +55,6 @@
   );
 })();
 </script>
-══════════════════════════════════════════════════════─ -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script> -->
-     
-<script src="https://cdn.jsdelivr.net/npm/papaparse/papaparse.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-
 
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
@@ -746,21 +739,24 @@ const state = {
   charts: {},
 };
 
-// ── Chart.js defaults ──────────────────────────────────
-Chart.defaults.color = '#50506a';
-Chart.defaults.borderColor = '#1f1f30';
-Chart.defaults.font.family = "'IBM Plex Mono', monospace";
-Chart.defaults.font.size = 9;
-Chart.defaults.plugins.tooltip.backgroundColor = '#141420';
-Chart.defaults.plugins.tooltip.titleColor = '#e8e8f0';
-Chart.defaults.plugins.tooltip.bodyColor = '#9090a8';
-Chart.defaults.plugins.tooltip.borderColor = '#2a2a3e';
-Chart.defaults.plugins.tooltip.borderWidth = 1;
-Chart.defaults.plugins.tooltip.cornerRadius = 3;
-Chart.defaults.plugins.tooltip.padding = 10;
-Chart.defaults.plugins.tooltip.titleFont = { family: "'Syne', sans-serif", weight: '700', size: 11 };
-Chart.defaults.plugins.tooltip.bodyFont  = { family: "'IBM Plex Mono', monospace", size: 10 };
-Chart.defaults.animation = { duration: 600, easing: 'easeOutQuart' };
+// ── Chart.js defaults — called AFTER Chart.js has loaded ─────────────────────
+// Must NOT run at parse time (Chart is undefined then). Called by the loader.
+function applyChartDefaults() {
+  Chart.defaults.color = '#50506a';
+  Chart.defaults.borderColor = '#1f1f30';
+  Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+  Chart.defaults.font.size = 9;
+  Chart.defaults.plugins.tooltip.backgroundColor = '#141420';
+  Chart.defaults.plugins.tooltip.titleColor = '#e8e8f0';
+  Chart.defaults.plugins.tooltip.bodyColor = '#9090a8';
+  Chart.defaults.plugins.tooltip.borderColor = '#2a2a3e';
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.cornerRadius = 3;
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.titleFont = { family: "'Syne', sans-serif", weight: '700', size: 11 };
+  Chart.defaults.plugins.tooltip.bodyFont  = { family: "'IBM Plex Mono', monospace", size: 10 };
+  Chart.defaults.animation = { duration: 600, easing: 'easeOutQuart' };
+}
 
 // ── Loading helpers ────────────────────────────────────
 function setLoading(pct, msg) {
